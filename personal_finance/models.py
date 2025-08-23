@@ -827,9 +827,9 @@ def create_shopping_items_bulk(db, items_data):
         for item in items_data:
             if not all(field in item for field in required_fields):
                 raise ValueError(f"Missing required fields in item: {item}")
-            item['session_id'] = str(item['session_id'])  # Ensure session_id is a string
             item['unit'] = item.get('unit', 'piece')
-        
+            if 'session_id' in item and item['session_id']:
+                item['session_id'] = str(item['session_id'])  # Ensure session_id is a string
         result = db.shopping_items.insert_many(items_data)
         logger.info(f"Created {len(result.inserted_ids)} shopping items", 
                    extra={'session_id': items_data[0].get('session_id', 'no-session-id') if items_data else 'no-session-id'})
@@ -996,14 +996,14 @@ def get_user_by_email(db, email):
 
 def create_user(db, user_data):
     """
-    Create a new user in the database.
+    Create a new user in the database or update an existing user if the _id already exists.
     
     Args:
         db: MongoDB database instance
         user_data: Dictionary containing user information
     
     Returns:
-        str: ID of the created user
+        str: ID of the created or updated user
     """
     try:
         if 'password' in user_data:
@@ -1015,14 +1015,29 @@ def create_user(db, user_data):
         user_data.setdefault('is_admin', False)
         user_data.setdefault('setup_complete', False)
         
+        # Check if user with the given _id already exists
+        existing_user = db.users.find_one({'_id': user_data['_id']})
+        if existing_user:
+            # Update existing user
+            result = db.users.update_one(
+                {'_id': user_data['_id']},
+                {'$set': user_data}
+            )
+            if result.modified_count > 0:
+                logger.info(f"Updated user with ID: {user_data['_id']}")
+            else:
+                logger.info(f"No changes made to user with ID: {user_data['_id']}")
+            return str(user_data['_id'])
+        
+        # Insert new user
         result = db.users.insert_one(user_data)
         logger.info(f"Created user with ID: {result.inserted_id}")
         return str(result.inserted_id)
     except WriteError as e:
-        logger.error(f"Error creating user: {str(e)}")
+        logger.error(f"Error creating or updating user: {str(e)}")
         raise
     except Exception as e:
-        logger.error(f"Error creating user: {str(e)}")
+        logger.error(f"Error creating or updating user: {str(e)}")
         raise
 
 def create_credit_request(db, request_data):
