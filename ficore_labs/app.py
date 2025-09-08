@@ -2,7 +2,7 @@ import os
 import sys
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from flask import (
     Flask, jsonify, request, render_template, redirect, url_for, flash,
@@ -16,7 +16,7 @@ from functools import wraps
 from pymongo import MongoClient
 import certifi
 from flask_login import LoginManager, login_required, current_user, UserMixin, logout_user
-from flask_wtf.csrf import CSRFProtect
+from flask_wtf.csrf import CSRFProtect, CSRFError
 from flask_babel import Babel
 from flask_compress import Compress
 from flask_limiter import Limiter
@@ -24,7 +24,7 @@ from flask_limiter.util import get_remote_address
 from blueprints.users.routes import get_post_login_redirect
 from utils import (
     get_mongo_db, logger, initialize_tools_with_urls, generate_tools_with_urls,
-    TRADER_TOOLS, TRADER_NAV, format_date
+    TRADER_TOOLS, TRADER_NAV, ADMIN_TOOLS, ADMIN_NAV, format_date
 )
 from translations import register_translation, trans, get_translations, get_all_translations, get_module_translations
 
@@ -37,9 +37,12 @@ flask_session = Session()
 csrf = CSRFProtect()
 babel = Babel()
 compress = Compress()
-limiter = Limiter(key_func=get_remote_address, default_limits=['200 per day', '50 per hour'], storage_uri='memory://')
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=['200 per day', '50 per hour'],
+    storage_uri=os.getenv('REDIS_URI', 'memory://')  # Use Redis for production
+)
 
-# Decorators
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -72,7 +75,7 @@ def ensure_session_id(f):
             if 'sid' not in session or not session.get('sid'):
                 session['sid'] = str(uuid.uuid4())
                 session['is_anonymous'] = not current_user.is_authenticated
-                session['last_activity'] = datetime.now(timezone.utc).isoformat()
+                session['last_activity'] = datetime.now(ZoneInfo("UTC"))
                 session.modified = True
                 logger.info(f'New session ID generated: {session["sid"]}', extra={'session_id': session["sid"], 'ip_address': request.remote_addr})
             else:
@@ -86,7 +89,7 @@ def ensure_session_id(f):
                     session['lang'] = session.get('lang', 'en')
                     session['sid'] = str(uuid.uuid4())
                     session['is_anonymous'] = True
-                    session['last_activity'] = datetime.now(timezone.utc).isoformat()
+                    session['last_activity'] = datetime.now(ZoneInfo("UTC"))
                     flash('Your session has timed out.', 'warning')
                     response = make_response(redirect(url_for('users.login')))
                     response.set_cookie(
@@ -97,7 +100,7 @@ def ensure_session_id(f):
                         secure=current_app.config.get('SESSION_COOKIE_SECURE', True)
                     )
                     return response
-            session['last_activity'] = datetime.now(timezone.utc).isoformat()
+            session['last_activity'] = datetime.now(ZoneInfo("UTC"))
             session.modified = True
         except Exception as e:
             logger.error(f'Session operation failed: {str(e)}', extra={'session_id': session.get('sid', 'no-session-id'), 'ip_address': request.remote_addr})
@@ -132,7 +135,7 @@ def setup_logging(app):
     pymongo_logger.addHandler(handler)
     flask_logger.setLevel(logging.INFO)
     werkzeug_logger.setLevel(logging.INFO)
-    pymongo_logger.setLevel(logging.INFO)
+    pymongo_logger.setLevel(logging.WARNING)  # Suppress fork warnings
     logger.info('Logging setup complete', extra={'session_id': 'none', 'user_role': 'none', 'ip_address': 'none'})
 
 def check_mongodb_connection(app):
@@ -160,7 +163,7 @@ def setup_session(app):
                 app.config['SESSION_COOKIE_HTTPONLY'] = True
                 app.config['SESSION_COOKIE_NAME'] = 'bizcore_session'
                 flask_session.init_app(app)
-                db = app.extensions['mongo']['bizdb']
+                db = get_mongo_db()
                 db.sessions.create_index("created_at", expireAfterSeconds=1800)
                 logger.info(f'Session configured: type={app.config["SESSION_TYPE"]}', extra={'session_id': 'none', 'user_role': 'none', 'ip_address': 'none'})
                 return
@@ -179,10 +182,10 @@ class User(UserMixin):
         self.id = id
         self.email = email
         self.display_name = display_name or id
-        self.role = role
+        self.role = role if role in ['trader', 'admin'] else 'trader'  # Restrict to trader, admin
         self.is_trial = is_trial
-        self.trial_start = trial_start or datetime.now(timezone.utc)
-        self.trial_end = trial_end or (datetime.now(timezone.utc) + timedelta(days=30))
+        self.trial_start = trial_start or datetime.now(ZoneInfo("UTC"))
+        self.trial_end = trial_end or (datetime.now(ZoneInfo("UTC")) + timedelta(days=30))
         self.is_subscribed = is_subscribed
         self.subscription_plan = subscription_plan
         self.subscription_start = subscription_start
@@ -199,13 +202,11 @@ class User(UserMixin):
 
     @property
     def settings(self):
-        """Get user settings with defaults"""
         try:
             with current_app.app_context():
                 user = current_app.extensions['mongo']['bizdb'].users.find_one({'_id': self.id})
                 if user and 'settings' in user:
                     return user['settings']
-                # Return default settings if none exist
                 return {
                     'show_kobo': True,
                     'incognito_mode': False,
@@ -236,21 +237,21 @@ class User(UserMixin):
 
     def is_trial_active(self):
         if self.role == 'admin':
-            return True  # Admins always bypass trial/subscription checks
+            return True
         if self.is_subscribed and self.subscription_end:
             subscription_end_aware = (
-                self.subscription_end.replace(tzinfo=timezone.utc)
+                self.subscription_end.replace(tzinfo=ZoneInfo("UTC"))
                 if self.subscription_end.tzinfo is None
                 else self.subscription_end
             )
-            return datetime.now(timezone.utc) <= subscription_end_aware
+            return datetime.now(ZoneInfo("UTC")) <= subscription_end_aware
         if self.is_trial and self.trial_end:
             trial_end_aware = (
-                self.trial_end.replace(tzinfo=timezone.utc)
+                self.trial_end.replace(tzinfo=ZoneInfo("UTC"))
                 if self.trial_end.tzinfo is None
                 else self.trial_end
             )
-            return datetime.now(timezone.utc) <= trial_end_aware
+            return datetime.now(ZoneInfo("UTC")) <= trial_end_aware
         return False
 
     @property
@@ -288,15 +289,15 @@ def create_app():
             tls=True,
             tlsCAFile=certifi.where(),
             maxPoolSize=50,
-            minPoolSize=5
+            minPoolSize=5,
+            connect=False  # Defer connection for fork-safety
         )
         app.extensions = getattr(app, 'extensions', {})
         app.extensions['mongo'] = client
-        client.admin.command('ping')
-        logger.info('MongoDB client initialized successfully', extra={'session_id': 'none', 'user_role': 'none', 'ip_address': 'none'})
+        logger.info('MongoDB client initialized successfully (connect deferred)', extra={'session_id': 'none', 'user_role': 'none', 'ip_address': 'none'})
     except Exception as e:
-        logger.error(f'MongoDB connection failed: {str(e)}', extra={'session_id': 'none', 'user_role': 'none', 'ip_address': 'none'})
-        raise RuntimeError(f'Failed to connect to MongoDB: {str(e)}')
+        logger.error(f'MongoDB connection setup failed: {str(e)}', extra={'session_id': 'none', 'user_role': 'none', 'ip_address': 'none'})
+        raise RuntimeError(f'Failed to set up MongoDB: {str(e)}')
 
     # Initialize extensions
     setup_logging(app)
@@ -308,8 +309,14 @@ def create_app():
     login_manager.login_view = 'users.login'
     setup_session(app)
 
-    # Register translation function
+    # Register translation function and locale selector
     register_translation(app)
+
+    @babel.localeselector
+    def get_locale():
+        if has_request_context():
+            return session.get('lang', 'en')
+        return 'en'
 
     # User loader
     @login_manager.user_loader
@@ -359,58 +366,54 @@ def create_app():
         raise
 
     # Register blueprints
-    from blueprints.users.routes import users_bp
-    from blueprints.debtors.routes import debtors_bp
-    from blueprints.creditors.routes import creditors_bp
-    from blueprints.payments.routes import payments_bp
-    from blueprints.receipts.routes import receipts_bp
-    from blueprints.reports.routes import reports_bp
-    from blueprints.admin.routes import admin_bp
-    from blueprints.dashboard.routes import dashboard_bp
-    from blueprints.general.routes import general_bp
-    from notifications.routes import notifications
-    from blueprints.business.routes import business
+    blueprints = [
+        ('users', '/users', 'blueprints.users.routes', 'users_bp'),
+        ('debtors', '/debtors', 'blueprints.debtors.routes', 'debtors_bp'),
+        ('creditors', '/creditors', 'blueprints.creditors.routes', 'creditors_bp'),
+        ('payments', '/payments', 'blueprints.payments.routes', 'payments_bp'),
+        ('receipts', '/receipts', 'blueprints.receipts.routes', 'receipts_bp'),
+        ('reports', '/reports', 'blueprints.reports.routes', 'reports_bp'),
+        ('admin', '/admin', 'blueprints.admin.routes', 'admin_bp'),
+        ('dashboard', '/dashboard', 'blueprints.dashboard.routes', 'dashboard_bp'),
+        ('general', '/general', 'blueprints.general.routes', 'general_bp'),
+        ('notifications', None, 'notifications.routes', 'notifications'),
+        ('business', '/business', 'blueprints.business.routes', 'business'),
+        ('subscribe', '/subscribe', 'blueprints.subscribe.routes', 'subscribe_bp'),
+        ('kyc', '/kyc', 'blueprints.kyc.routes', 'kyc_bp'),
+        ('settings', '/settings', 'blueprints.settings.routes', 'settings_bp'),
+        ('inventory', '/inventory', 'blueprints.inventory.routes', 'inventory_bp')
+    ]
+    for name, prefix, module, bp_var in blueprints:
+        try:
+            module_obj = __import__(module, fromlist=[bp_var])
+            bp = getattr(module_obj, bp_var)
+            app.register_blueprint(bp, url_prefix=prefix)
+            logger.info(f'Registered {name} blueprint', extra={'session_id': 'none', 'user_role': 'none', 'ip_address': 'none'})
+        except Exception as e:
+            logger.error(f'Failed to register {name} blueprint: {str(e)}', extra={'session_id': 'none', 'user_role': 'none', 'ip_address': 'none'})
+            raise
 
-    from blueprints.subscribe.routes import subscribe_bp
-    from blueprints.kyc.routes import kyc_bp
-    from blueprints.settings.routes import settings_bp
-    # Register inventory blueprint
-    try:
-        from blueprints.inventory.routes import inventory_bp
-        app.register_blueprint(inventory_bp, url_prefix='/inventory')
-        logger.info('Registered inventory blueprint', extra={'session_id': 'none', 'user_role': 'none', 'ip_address': 'none'})
-    except Exception as e:
-        logger.error(f'Failed to register inventory blueprint: {str(e)}', extra={'session_id': 'none', 'user_role': 'none', 'ip_address': 'none'})
-
-    app.register_blueprint(users_bp, url_prefix='/users')
-    app.register_blueprint(debtors_bp, url_prefix='/debtors')
-    app.register_blueprint(creditors_bp, url_prefix='/creditors')
-    app.register_blueprint(payments_bp, url_prefix='/payments')
-    app.register_blueprint(receipts_bp, url_prefix='/receipts')
-    app.register_blueprint(reports_bp, url_prefix='/reports')
-    app.register_blueprint(admin_bp, url_prefix='/admin')
-    app.register_blueprint(subscribe_bp, url_prefix='/subscribe')
-    app.register_blueprint(general_bp, url_prefix='/general')
-    app.register_blueprint(business, url_prefix='/business')
-    app.register_blueprint(dashboard_bp, url_prefix='/dashboard')
-    app.register_blueprint(notifications)
-    app.register_blueprint(kyc_bp, url_prefix='/kyc')
-    app.register_blueprint(settings_bp, url_prefix='/settings')
     logger.info('Registered all blueprints including KYC and Settings', extra={'session_id': 'none', 'user_role': 'none', 'ip_address': 'none'})
 
+    # Initialize tools and navigation
+    try:
+        initialize_tools_with_urls(app)
+        logger.info('Navigation initialized after blueprint registration', extra={'session_id': 'none', 'user_role': 'none', 'ip_address': 'none'})
+    except Exception as e:
+        logger.error(f'Failed to initialize navigation: {str(e)}', extra={'session_id': 'none', 'user_role': 'none', 'ip_address': 'none'})
+        raise
+
     # Define format_currency filter
-    def format_currency(value):
+    def format_currency(value, currency='₦'):
         try:
-            return "₦{:,.2f}".format(float(value))
+            return f"{currency}{float(value):,.2f}"
         except (ValueError, TypeError) as e:
             logger.warning(f'Error formatting currency {value}: {str(e)}', extra={'session_id': session.get('sid', 'no-session-id'), 'ip_address': request.remote_addr})
             return str(value)
 
-    # Register format_currency filter and global
     app.jinja_env.filters['format_currency'] = format_currency
     app.jinja_env.globals['format_currency'] = format_currency
 
-    # Define format_date filter
     @app.template_filter('format_date')
     def format_date_wrapper(value):
         try:
@@ -419,57 +422,30 @@ def create_app():
             logger.warning(f'Error formatting date {value}: {str(e)}', extra={'session_id': session.get('sid', 'no-session-id'), 'ip_address': request.remote_addr})
             return str(value)
 
-    # Register format_date as global
     app.jinja_env.globals['format_date'] = format_date_wrapper
 
-    # Define is_trial_expired global
     def is_trial_expired(trial_end, is_trial=True, is_subscribed=False, subscription_end=None):
         try:
+            utc_now = datetime.now(ZoneInfo("UTC"))
             if is_subscribed and subscription_end:
-                subscription_end_aware = (
-                    subscription_end.replace(tzinfo=timezone.utc)
-                    if subscription_end.tzinfo is None
-                    else subscription_end
-                )
-                return datetime.now(timezone.utc) > subscription_end_aware
+                subscription_end_aware = subscription_end.replace(tzinfo=ZoneInfo("UTC")) if subscription_end.tzinfo is None else subscription_end
+                return utc_now > subscription_end_aware
             if is_trial and trial_end:
-                trial_end_aware = (
-                    trial_end.replace(tzinfo=timezone.utc)
-                    if trial_end.tzinfo is None
-                    else trial_end
-                )
-                return datetime.now(timezone.utc) > trial_end_aware
-            return True  # Default to expired if no valid trial or subscription
+                trial_end_aware = trial_end.replace(tzinfo=ZoneInfo("UTC")) if trial_end.tzinfo is None else trial_end
+                return utc_now > trial_end_aware
+            return True
         except Exception as e:
-            logger.error(
-                f"Error checking trial expiration: {str(e)}",
-                extra={'session_id': session.get('sid', 'no-session-id'), 'ip_address': request.remote_addr}
-            )
-            return True  # Default to expired if there's an error
+            logger.error(f"Error checking trial expiration: {str(e)}", extra={'session_id': session.get('sid', 'no-session-id'), 'ip_address': request.remote_addr})
+            return True
 
-    # Register is_trial_expired in Jinja globals
     app.jinja_env.globals['is_trial_expired'] = is_trial_expired
     logger.info("Registered is_trial_expired Jinja global", extra={'session_id': 'none', 'user_role': 'none', 'ip_address': 'none'})
 
-    # Initialize tools and navigation after blueprints
-    @app.before_request
-    def initialize_navigation():
-        with app.app_context():
-            try:
-                initialize_tools_with_urls(app)
-                logger.info('Navigation initialized after blueprint registration', extra={'session_id': session.get('sid', 'no-session-id'), 'ip_address': request.remote_addr})
-            except Exception as e:
-                logger.error(f'Failed to initialize navigation: {str(e)}', extra={'session_id': session.get('sid', 'no-session-id'), 'ip_address': request.remote_addr})
-                raise
-
-    # Ensure session['lang'] is set early and respected
     @app.before_request
     def ensure_lang_in_session():
         if 'lang' not in session:
-            session['lang'] = 'en'  # Default language
+            session['lang'] = 'en'
 
-
-    # Set up Jinja globals
     app.jinja_env.globals.update(
         FACEBOOK_URL=app.config.get('FACEBOOK_URL', 'https://facebook.com/ficoreafrica'),
         TWITTER_URL=app.config.get('TWITTER_URL', 'https://x.com/ficoreafrica'),
@@ -482,7 +458,6 @@ def create_app():
         is_admin=lambda: current_user.is_admin if current_user.is_authenticated else False
     )
 
-    # Template filters and context processors
     @app.template_filter('format_number')
     def format_number(value):
         try:
@@ -519,30 +494,26 @@ def create_app():
         breadcrumb_items = []
 
         if current_user.is_authenticated:
-            role = getattr(current_user, 'role', None)
+            role = getattr(current_user, 'role', 'trader')
             if role == 'admin':
-                nav = build_nav(_ADMIN_NAV)
-                tools = build_nav(_ADMIN_TOOLS)
-            elif role == 'startup':
-                nav = build_nav(_STARTUP_NAV)
-                tools = build_nav(_STARTUP_TOOLS)
-            elif role == 'trader':
-                nav = build_nav(_TRADER_NAV)
-                tools = build_nav(_TRADER_TOOLS)
-            else:
-                nav = build_nav(_TRADER_NAV)
-                tools = build_nav(_TRADER_TOOLS)
+                nav = build_nav(ADMIN_NAV)
+                tools = build_nav(ADMIN_TOOLS)
+            else:  # Default to trader
+                nav = build_nav(TRADER_NAV)
+                tools = build_nav(TRADER_TOOLS)
 
-            # Generate breadcrumb items
             try:
                 from helpers.breadcrumb_helper import get_breadcrumb_items
                 breadcrumb_items = get_breadcrumb_items()
+            except ImportError:
+                logger.warning("Breadcrumb helper not found; using empty list")
+                breadcrumb_items = []
             except Exception as e:
                 logger.error(f"Error generating breadcrumb items: {e}")
                 breadcrumb_items = []
 
         return {
-            'current_year': datetime.now(timezone.utc).year,
+            'current_year': datetime.now(ZoneInfo("UTC")).year,
             'current_lang': session.get('lang', 'en'),
             'current_user': current_user if has_request_context() else None,
             'available_languages': [
@@ -554,7 +525,6 @@ def create_app():
             'breadcrumb_items': breadcrumb_items,
         }
 
-    # Routes
     @app.route('/')
     @ensure_session_id
     def index():
@@ -589,7 +559,6 @@ def create_app():
 
     @app.route('/google489486b6f031d46f.html')
     def google_site_verification():
-        """Route to serve the Google Site Verification file directly."""
         return send_from_directory(
             os.path.join(app.root_path, 'google_verification'),
             'google489486b6f031d46f.html',
@@ -598,7 +567,6 @@ def create_app():
 
     @app.route('/sitemap.xml')
     def sitemap():
-        """Route to serve the static sitemap.xml file."""
         return send_from_directory(
             os.path.join(app.root_path, 'sitemaps'),
             'sitemap.xml',
@@ -627,10 +595,16 @@ def create_app():
         valid_langs = ['en', 'ha']
         lang = lang if lang in valid_langs else 'en'
         session['lang'] = lang
-        session['last_activity'] = datetime.now(timezone.utc).isoformat()
+        session['last_activity'] = datetime.now(ZoneInfo("UTC"))
         session.modified = True
         logger.info(f"Language set to {session['lang']} for session {session.get('sid', 'no-session-id')}", extra={'session_id': session.get('sid', 'no-session-id'), 'ip_address': request.remote_addr})
         return jsonify({'success': True, 'lang': session['lang']})
+
+    @app.errorhandler(403)
+    def forbidden(e):
+        logger.warning(f'Forbidden access: {request.url}', extra={'session_id': session.get('sid', 'no-session-id'), 'ip_address': request.remote_addr})
+        flash(trans('access_denied', default='Access denied'), 'danger')
+        return render_template('error/403.html', error=str(e)), 403
 
     @app.errorhandler(404)
     def page_not_found(e):
@@ -641,6 +615,12 @@ def create_app():
     def internal_server_error(e):
         logger.error(f'Server error: {str(e)}', extra={'session_id': session.get('sid', 'no-session-id'), 'ip_address': request.remote_addr})
         return render_template('error/500.html', error=str(e)), 500
+
+    @app.errorhandler(CSRFError)
+    def handle_csrf_error(e):
+        logger.error(f'CSRF error: {str(e)}', extra={'session_id': session.get('sid', 'no-session-id'), 'ip_address': request.remote_addr})
+        flash('Invalid CSRF token. Please try again.', 'danger')
+        return redirect(url_for('users.login'))
 
     @app.before_request
     def check_session_timeout():
@@ -654,9 +634,9 @@ def create_app():
                     if last_activity.tzinfo is None:
                         last_activity = last_activity.replace(tzinfo=ZoneInfo("UTC"))
                 except ValueError:
-                    last_activity = datetime.now(timezone.utc)
-                    session['last_activity'] = last_activity.isoformat()
-            if (datetime.now(timezone.utc) - last_activity).total_seconds() > 1800:
+                    last_activity = datetime.now(ZoneInfo("UTC"))
+                    session['last_activity'] = last_activity
+            if (datetime.now(ZoneInfo("UTC")) - last_activity).total_seconds() > 1800:
                 user_id = current_user.id
                 sid = session.get('sid', 'no-session-id')
                 logger.info(f"Session timeout for user {user_id}", extra={'session_id': sid, 'ip_address': request.remote_addr})
@@ -672,7 +652,7 @@ def create_app():
                 session['lang'] = session.get('lang', 'en')
                 session['sid'] = str(uuid.uuid4())
                 session['is_anonymous'] = True
-                session['last_activity'] = datetime.now(timezone.utc).isoformat()
+                session['last_activity'] = datetime.now(ZoneInfo("UTC"))
                 flash('Your session has timed out.', 'warning')
                 response = make_response(redirect(url_for('users.login')))
                 response.set_cookie(
@@ -684,7 +664,7 @@ def create_app():
                 )
                 return response
         if current_user.is_authenticated:
-            session['last_activity'] = datetime.now(timezone.utc).isoformat()
+            session['last_activity'] = datetime.now(ZoneInfo("UTC"))
             session.modified = True
 
     return app
@@ -692,5 +672,6 @@ def create_app():
 app = create_app()
 
 if __name__ == '__main__':
-    logger.info('Starting Flask application', extra={'session_id': 'none', 'user_role': 'none', 'ip_address': 'none'})
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=True)
+    port = int(os.environ.get('PORT', 5000))
+    logger.info(f'Starting Flask application on port {port}', extra={'session_id': 'none', 'user_role': 'none', 'ip_address': 'none'})
+    app.run(host='0.0.0.0', port=port, debug=os.getenv('FLASK_ENV', 'development') == 'development')
