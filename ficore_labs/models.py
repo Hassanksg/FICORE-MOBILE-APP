@@ -995,7 +995,7 @@ def get_records(db, filter_kwargs):
     try:
         return list(db.records.find(filter_kwargs).sort('created_at', DESCENDING))
     except Exception as e:
-        logger.error(f"{trans('general_records_fetch_error, default='Error getting records')}: {str(e)}", 
+        logger.error(f"{trans('general_records_fetch_error', default='Error getting records')}: {str(e)}", 
                     exc_info=True, extra={'session_id': 'no-session-id'})
         raise
 
