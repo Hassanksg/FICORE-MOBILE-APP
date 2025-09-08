@@ -11,7 +11,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask_mailman import EmailMessage
 import re
 import random
-from itsdangerous import URLSafeTimedSerializer
+from itsdangerous import URLSafeTimedSerializer, SignatureExpired, BadSignature
 import utils
 from translations import trans
 from models import User  # Import User class from models
@@ -72,7 +72,6 @@ class SignupForm(FlaskForm):
         validators.Length(min=6, message=trans('general_password_length', default='Password must be at least 6 characters')),
         validators.Regexp(PASSWORD_REGEX, message=trans('general_password_format', default='Password must be at least 6 characters'))
     ], render_kw={'class': 'form-control'})
-    # Role is now fixed to 'trader' for all signups; no user choice
     language = SelectField(trans('general_language', default='Language'), choices=[
         ('en', trans('general_english', default='English')),
         ('ha', trans('general_hausa', default='Hausa'))
@@ -422,7 +421,7 @@ def signup():
         try:
             username = form.username.data.strip().lower()
             email = form.email.data.strip().lower()
-            role = form.role.data
+            role = 'trader'  # Fixed role for all signups
             language = form.language.data
             logger.debug(f"Signup attempt: {username}, {email}, role={role}, session_id: {session.get('session_id')}")
             logger.info(f"Signup attempt: username={username}, email={email}, role={role}, language={language}")
@@ -504,87 +503,105 @@ def signup():
             flash(trans('general_error', default='An error occurred. Please try again.'), 'danger')
             return render_template('users/signup.html', form=form, title=trans('general_signup', lang=session.get('lang', 'en'))), 500
     else:
-        form = SignupForm()
-        if form.validate_on_submit():
-            try:
-                username = form.username.data.strip().lower()
-                email = form.email.data.strip().lower()
-                language = form.language.data
-                role = 'trader'  # Only role allowed
-                logger.debug(f"Signup attempt: {username}, {email}, role={role}, session_id: {session.get('session_id')}")
-                logger.info(f"Signup attempt: username={username}, email={email}, role={role}, language={language}")
-                db = utils.get_mongo_db()
-                if db.users.find_one({'_id': username}):
-                    flash(trans('general_username_exists', default='Username already exists'), 'danger')
-                    logger.warning(f"Signup failed: Username {username} already exists")
-                    return render_template('users/signup.html', form=form, title=trans('general_signup', lang=session.get('lang', 'en')))
-                if db.users.find_one({'email': email}):
-                    flash(trans('general_email_exists', default='Email already exists'), 'danger')
-                    logger.warning(f"Signup failed: Email {email} already exists")
-                    return render_template('users/signup.html', form=form, title=trans('general_signup', lang=session.get('lang', 'en')))
-                user_data = {
-                    '_id': username,
-                    'email': email,
-                    'password_hash': generate_password_hash(form.password.data),
-                    'role': role,
-                    'language': language,
-                    'dark_mode': False,
-                    'is_admin': False,
-                    'setup_complete': False,
-                    'display_name': username,
-                    'created_at': datetime.utcnow(),
-                    'is_trial': True,
-                    'trial_start': datetime.utcnow(),
-                    'trial_end': datetime.utcnow() + timedelta(days=30),
-                    'is_subscribed': False,
-                    'subscription_plan': None,
-                    'subscription_start': None,
-                    'subscription_end': None
+        for field, errors in form.errors.items():
+            for error in errors:
+                flash(f"{field}: {error}", 'danger')
+    return render_template('users/signup.html', form=form, title=trans('general_signup', lang=session.get('lang', 'en')))
+
+@users_bp.route('/forgot_password', methods=['GET', 'POST'])
+@utils.limiter.limit("50/hour")
+def forgot_password():
+    if current_user.is_authenticated:
+        try:
+            return redirect(get_post_login_redirect(current_user.role))
+        except Exception as e:
+            logger.error(f"Error redirecting authenticated user in forgot_password: {str(e)}")
+            flash(trans('general_error', default='An error occurred. Please try again.'), 'danger')
+            return redirect(url_for('users.login')), 500
+
+    form = ForgotPasswordForm()
+    if form.validate_on_submit():
+        try:
+            email = form.email.data.strip().lower()
+            logger.info(f"Forgot password attempt for email: {email}, session_id: {session.get('session_id')}")
+            db = utils.get_mongo_db()
+            user = db.users.find_one({'email': email})
+            if not user:
+                flash(trans('general_email_not_found', default='Email not found'), 'danger')
+                logger.warning(f"Forgot password failed: Email {email} not found")
+                return render_template('users/forgot_password.html', form=form, title=trans('general_forgot_password', lang=session.get('lang', 'en')))
+
+            serializer = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
+            token = serializer.dumps(email, salt='password-reset')
+            db.users.update_one(
+                {'email': email},
+                {'$set': {'reset_token': token, 'reset_token_expiry': datetime.utcnow() + timedelta(hours=1)}}
+            )
+            reset_url = url_for('users.reset_password', token=token, _external=True)
+            mail = utils.get_mail(current_app)
+            lang = user.get('language', session.get('lang', 'en'))
+            translation_key = 'general_reset_body_ha' if lang == 'ha' else 'general_reset_body'
+            msg = EmailMessage(
+                subject=trans('general_reset_subject', default='Password Reset Request', lang=lang),
+                body=trans(translation_key, default='Click this link to reset your password: {reset_url}', lang=lang, reset_url=reset_url),
+                to=[email]
+            )
+            msg.send()
+            log_audit_action('forgot_password', {'email': email})
+            logger.info(f"Password reset email sent to {email}")
+            flash(trans('general_reset_email_sent', default='A password reset link has been sent to your email.'), 'success')
+            return redirect(url_for('users.login'))
+        except pymongo.errors.PyMongoError as e:
+            logger.error(f"MongoDB error during forgot password for {email}: {str(e)}")
+            flash(trans('general_database_error', default='An error occurred while accessing the database. Please try again later.'), 'danger')
+            return render_template('users/forgot_password.html', form=form, title=trans('general_forgot_password', lang=session.get('lang', 'en'))), 500
+        except Exception as e:
+            logger.error(f"Unexpected error during forgot password for {email}: {str(e)}")
+            flash(trans('general_error', default='An error occurred. Please try again.'), 'danger')
+            return render_template('users/forgot_password.html', form=form, title=trans('general_forgot_password', lang=session.get('lang', 'en'))), 500
+    else:
+        for field, errors in form.errors.items():
+            for error in errors:
+                flash(f"{field}: {error}", 'danger')
+    return render_template('users/forgot_password.html', form=form, title=trans('general_forgot_password', lang=session.get('lang', 'en')))
+
+@users_bp.route('/reset_password/<token>', methods=['GET', 'POST'])
+@utils.limiter.limit("50/hour")
+def reset_password(token):
+    if current_user.is_authenticated:
+        try:
+            return redirect(get_post_login_redirect(current_user.role))
+        except Exception as e:
+            logger.error(f"Error redirecting authenticated user in reset_password: {str(e)}")
+            flash(trans('general_error', default='An error occurred. Please try again.'), 'danger')
+            return redirect(url_for('users.login')), 500
+
+    try:
+        serializer = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
+        email = serializer.loads(token, salt='password-reset', max_age=3600)
+    except (SignatureExpired, BadSignature):
+        flash(trans('general_invalid_reset_token', default='Invalid or expired reset token'), 'danger')
+        logger.warning(f"Invalid or expired reset token: {token}")
+        return redirect(url_for('users.forgot_password'))
+
+    form = ResetPasswordForm()
+    if form.validate_on_submit():
+        try:
+            email = email.strip().lower()
+            logger.info(f"Password reset attempt for email: {email}, session_id: {session.get('session_id')}")
+            db = utils.get_mongo_db()
+            user = db.users.find_one({'email': email, 'reset_token': token})
+            if not user:
+                flash(trans('general_invalid_reset_token', default='Invalid or expired reset token'), 'danger')
+                logger.warning(f"Password reset failed: No user found for email {email} with token {token}")
+                return redirect(url_for('users.forgot_password'))
+
+            db.users.update_one(
+                {'email': email},
+                {
+                    '$set': {'password_hash': generate_password_hash(form.password.data)},
+                    '$unset': {'reset_token': '', 'reset_token_expiry': ''}
                 }
-                result = db.users.insert_one(user_data)
-                if not result.inserted_id:
-                    flash(trans('general_database_error', default='An error occurred while creating your account. Please try again later.'), 'danger')
-                    logger.error(f"Failed to insert user: {username}")
-                    return render_template('users/signup.html', form=form, title=trans('general_signup', lang=session.get('lang', 'en'))), 500
-                db.audit_logs.insert_one({
-                    'admin_id': None,  # System action, no admin involved
-                    'action': 'signup',
-                    'details': {'user_id': username, 'role': role},
-                    'timestamp': datetime.now(timezone.utc)
-                })
-                user_obj = User(
-                    id=username,
-                    email=email,
-                    display_name=username,
-                    role=role,
-                    is_admin=False,
-                    setup_complete=False,
-                    language=language,
-                    is_trial=True,
-                    trial_start=datetime.utcnow(),
-                    trial_end=datetime.utcnow() + timedelta(days=30),
-                    is_subscribed=False,
-                    subscription_plan=None,
-                    subscription_start=None,
-                    subscription_end=None
-                )
-                login_user(user_obj, remember=True)
-                session['lang'] = language
-                session.pop('is_anonymous', None)
-                session['is_anonymous'] = False
-                logger.info(f"New user created and logged in: {username} (role: {role}). Session: {dict(session)}")
-                setup_route = get_setup_wizard_route(role)
-                return redirect(url_for(setup_route))
-            except Exception as e:
-                logger.error(f"Unexpected error during signup for {username}: {str(e)}")
-                flash(trans('general_error', default='An error occurred. Please try again.'), 'danger')
-                return render_template('users/signup.html', form=form, title=trans('general_signup', lang=session.get('lang', 'en'))), 500
-        else:
-            for field, errors in form.errors.items():
-                for error in errors:
-                    flash(f"{field}: {error}", 'danger')
-        return render_template('users/signup.html', form=form, title=trans('general_signup', lang=session.get('lang', 'en')))
-                 '$unset': {'reset_token': '', 'reset_token_expiry': ''}}
             )
             log_audit_action('reset_password', {'user_id': user['_id']})
             logger.info(f"Password reset successfully for user: {user['_id']}")
