@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 from models import create_feedback, get_mongo_db, get_user, create_waitlist_entry, get_waitlist_entries
 from flask import current_app
 import utils
-from users.routes import get_post_login_redirect
+from blueprints.users.routes import get_post_login_redirect
 
 # Use the existing limiter from utils
 from utils import limiter
@@ -424,3 +424,4 @@ def waitlist():
             return render_template('general/waitlist.html', title=trans('general_waitlist', lang=lang, default='Join Our Waitlist'), form=form)
     
     return render_template('general/waitlist.html', title=trans('general_waitlist', lang=lang, default='Join Our Waitlist'), form=form)
+
