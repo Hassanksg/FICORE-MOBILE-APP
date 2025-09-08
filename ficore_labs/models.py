@@ -1,38 +1,3 @@
-            # Create or update default admin user if it doesn't exist or lacks required fields
-            admin_user = db_instance.users.find_one({'_id': 'admin', 'role': 'admin'})
-            if not admin_user or 'password_hash' not in admin_user:
-                admin_data = {
-                    '_id': 'admin',
-                    'email': 'ficorerecords@gmail.com',
-                    'password_hash': generate_password_hash('Admin123!'),
-                    'role': 'admin',
-                    'is_admin': True,
-                    'display_name': 'Admin',
-                    'setup_complete': True,
-                    'language': 'en',
-                    'is_trial': False,
-                    'is_subscribed': True,
-                    'subscription_plan': 'admin',
-                    'subscription_start': datetime.now(timezone.utc),
-                    'subscription_end': None,
-                    'created_at': datetime.now(timezone.utc)
-                }
-                try:
-                    if admin_user:
-                        db_instance.users.update_one(
-                            {'_id': 'admin'},
-                            {'$set': admin_data, '$unset': {'password': ''}},
-                            upsert=True
-                        )
-                        logger.info(f"Updated default admin user: {admin_data['_id']}", extra={'session_id': 'no-session-id'})
-                    else:
-                        db_instance.users.insert_one(admin_data)
-                        logger.info(f"Created default admin user: {admin_data['_id']}", extra={'session_id': 'no-session-id'})
-                except DuplicateKeyError:
-                    logger.info(f"Admin user creation/update skipped due to existing user with same email or ID", extra={'session_id': 'no-session-id'})
-                except Exception as e:
-                    logger.error(f"Failed to create/update default admin user: {str(e)}", exc_info=True, extra={'session_id': 'no-session-id'})
-                    raise
 from pymongo import MongoClient, ASCENDING, DESCENDING
 from bson import ObjectId
 from datetime import datetime, timedelta, timezone
@@ -253,8 +218,41 @@ def initialize_app_data(app):
             logger.info(f"MongoDB database: {db_instance.name}", extra={'session_id': 'no-session-id'})
             collections = db_instance.list_collection_names()
             
-            # Admin user creation logic removed for DIICE-only experience
-                logger.info(f"Admin user with ID 'admin' already exists with valid password_hash, skipping creation", extra={'session_id': 'no-session-id'})
+            # Create or update default admin user if it doesn't exist or lacks required fields
+            admin_user = db_instance.users.find_one({'_id': 'admin', 'role': 'admin'})
+            if not admin_user or 'password_hash' not in admin_user:
+                admin_data = {
+                    '_id': 'admin',
+                    'email': 'ficorerecords@gmail.com',
+                    'password_hash': generate_password_hash('Admin123!'),
+                    'role': 'admin',
+                    'is_admin': True,
+                    'display_name': 'Admin',
+                    'setup_complete': True,
+                    'language': 'en',
+                    'is_trial': False,
+                    'is_subscribed': True,
+                    'subscription_plan': 'admin',
+                    'subscription_start': datetime.now(timezone.utc),
+                    'subscription_end': None,
+                    'created_at': datetime.now(timezone.utc)
+                }
+                try:
+                    if admin_user:
+                        db_instance.users.update_one(
+                            {'_id': 'admin'},
+                            {'$set': admin_data, '$unset': {'password': ''}},
+                            upsert=True
+                        )
+                        logger.info(f"Updated default admin user: {admin_data['_id']}", extra={'session_id': 'no-session-id'})
+                    else:
+                        db_instance.users.insert_one(admin_data)
+                        logger.info(f"Created default admin user: {admin_data['_id']}", extra={'session_id': 'no-session-id'})
+                except DuplicateKeyError:
+                    logger.info(f"Admin user creation/update skipped due to existing user with same email or ID", extra={'session_id': 'no-session-id'})
+                except Exception as e:
+                    logger.error(f"Failed to create/update default admin user: {str(e)}", exc_info=True, extra={'session_id': 'no-session-id'})
+                    raise
             
             # Define collection schemas for core business finance modules
             collection_schemas = {
