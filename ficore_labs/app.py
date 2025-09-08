@@ -304,19 +304,22 @@ def create_app():
     compress.init_app(app)
     csrf.init_app(app)
     limiter.init_app(app)
-    babel.init_app(app)
     login_manager.init_app(app)
     login_manager.login_view = 'users.login'
     setup_session(app)
 
-    # Register translation function and locale selector
-    register_translation(app)
-
-    @babel.localeselector
+    # Initialize Babel with locale selector
     def get_locale():
         if has_request_context():
             return session.get('lang', 'en')
         return 'en'
+
+    babel.init_app(app, locale_selector=get_locale)
+    app.config['BABEL_DEFAULT_LOCALE'] = 'en'
+    app.config['BABEL_SUPPORTED_LOCALES'] = ['en', 'ha']
+
+    # Register translation function
+    register_translation(app)
 
     # User loader
     @login_manager.user_loader
