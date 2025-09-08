@@ -3,7 +3,7 @@ import logging
 import uuid
 import os
 import certifi
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from flask import session, has_request_context, current_app, url_for, request
 from flask_limiter import Limiter
@@ -15,7 +15,11 @@ from wtforms import ValidationError
 from flask_login import current_user
 
 # Initialize extensions
-limiter = Limiter(key_func=get_remote_address, default_limits=['5,000 per day', '500 per hour'], storage_uri='memory://')
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=['5000 per day', '500 per hour'],
+    storage_uri=os.getenv('REDIS_URI', 'memory://')  # Use Redis for production
+)
 
 # Set up logging
 root_logger = logging.getLogger('bizcore_app')
@@ -27,6 +31,13 @@ class SessionFormatter(logging.Formatter):
         record.ip_address = getattr(record, 'ip_address', 'unknown')
         record.user_role = getattr(record, 'user_role', 'anonymous')
         return super().format(record)
+
+handler = logging.StreamHandler()
+handler.setFormatter(SessionFormatter(
+    '[%(asctime)s] %(levelname)s in %(name)s: %(message)s [session: %(session_id)s, role: %(user_role)s, ip: %(ip_address)s]'
+))
+root_logger.handlers = []
+root_logger.addHandler(handler)
 
 class SessionAdapter(logging.LoggerAdapter):
     def process(self, msg, kwargs):
@@ -130,7 +141,7 @@ TRADER_NAV = [
     }
 ]
 
-_ADMIN_TOOLS = [
+ADMIN_TOOLS = [
     {
         "endpoint": "dashboard.index",
         "label": "Dashboard",
@@ -157,7 +168,7 @@ _ADMIN_TOOLS = [
     }
 ]
 
-_ADMIN_NAV = [
+ADMIN_NAV = [
     {
         "endpoint": "admin.dashboard",
         "label": "Dashboard",
@@ -176,26 +187,17 @@ _ADMIN_NAV = [
     }
 ]
 
-# Initialize module-level variables
-TRADER_TOOLS = []
-TRADER_NAV = []
-STARTUP_TOOLS = []
-STARTUP_NAV = []
-ADMIN_TOOLS = []
-ADMIN_NAV = []
 ALL_TOOLS = []
 
 def initialize_tools_with_urls(app):
-    global TRADER_TOOLS, TRADER_NAV, STARTUP_TOOLS, STARTUP_NAV, ADMIN_TOOLS, ADMIN_NAV, ALL_TOOLS
+    global TRADER_TOOLS, TRADER_NAV, ADMIN_TOOLS, ADMIN_NAV, ALL_TOOLS
     try:
         with app.app_context():
-            TRADER_TOOLS = generate_tools_with_urls(_TRADER_TOOLS)
-            TRADER_NAV = generate_tools_with_urls(_TRADER_NAV)
-            STARTUP_TOOLS = generate_tools_with_urls(_STARTUP_TOOLS)
-            STARTUP_NAV = generate_tools_with_urls(_STARTUP_NAV)
-            ADMIN_TOOLS = generate_tools_with_urls(_ADMIN_TOOLS)
-            ADMIN_NAV = generate_tools_with_urls(_ADMIN_NAV)
-            ALL_TOOLS = TRADER_TOOLS + STARTUP_TOOLS + ADMIN_TOOLS
+            TRADER_TOOLS = generate_tools_with_urls(TRADER_TOOLS)
+            TRADER_NAV = generate_tools_with_urls(TRADER_NAV)
+            ADMIN_TOOLS = generate_tools_with_urls(ADMIN_TOOLS)
+            ADMIN_NAV = generate_tools_with_urls(ADMIN_NAV)
+            ALL_TOOLS = TRADER_TOOLS + ADMIN_TOOLS
             logger.info('Initialized tools and navigation with resolved URLs', extra={'session_id': 'no-session-id'})
     except Exception as e:
         logger.error(f'Error initializing tools with URLs: {str(e)}', extra={'session_id': 'no-session-id'})
@@ -205,6 +207,9 @@ def generate_tools_with_urls(tools):
     result = []
     for tool in tools:
         try:
+            if not tool.get('endpoint'):
+                logger.error(f"Missing endpoint for tool {tool.get('label', 'unknown')}", extra={'session_id': 'no-session-id'})
+                continue
             url = url_for(tool['endpoint'], _external=True)
             icon = tool.get('icon', 'bi-question-circle')
             if not icon or not icon.startswith('bi-'):
@@ -212,18 +217,11 @@ def generate_tools_with_urls(tools):
                 icon = 'bi-question-circle'
             result.append({**tool, 'url': url, 'icon': icon})
         except BuildError as e:
-            logger.warning(f"Failed to generate URL for endpoint {tool.get('endpoint', 'unknown')}: {str(e)}", extra={'session_id': 'no-session-id'})
+            logger.error(f"Failed to generate URL for endpoint {tool.get('endpoint', 'unknown')}: {str(e)}", extra={'session_id': 'no-session-id'})
             result.append({**tool, 'url': '#', 'icon': tool.get('icon', 'bi-question-circle')})
     return result
 
 def get_explore_features():
-    """
-    Returns a list of features for the explore section based on user role.
-    - Unauthenticated: 3 trader and 3 startup tools for marketing.
-    - Authenticated-trader: Only trader tools.
-    - Authenticated-startup: Only startup tools.
-    - Authenticated-admin: All tools (admin + startup).
-    """
     try:
         features = []
         user_role = 'unauthenticated'
@@ -231,8 +229,7 @@ def get_explore_features():
             user_role = current_user.role
 
         if user_role == 'unauthenticated':
-            # Unauthenticated: 3 trader and 3 startup tools for marketing
-            business_tool_keys = ["debtors_dashboard", "receipts_dashboard", "business_reports"]
+            business_tool_keys = ["debtors_dashboard", "receipts_dashboard", "profit_summary"]  # Removed "business_reports"
             for tool in TRADER_TOOLS:
                 if tool["label_key"] in business_tool_keys:
                     features.append({
@@ -243,19 +240,7 @@ def get_explore_features():
                         "description": tool.get("description", "Description not available"),
                         "url": tool["url"] if tool["url"] != "#" else url_for("users.login", _external=True)
                     })
-            startup_tool_keys = ["funds_dashboard", "forecasts_dashboard", "investor_reports_dashboard"]
-            for tool in STARTUP_TOOLS:
-                if tool["label_key"] in startup_tool_keys:
-                    features.append({
-                        "category": "Startup",
-                        "label_key": tool["label_key"],
-                        "description_key": tool["description_key"],
-                        "label": tool["label"],
-                        "description": tool.get("description", "Description not available"),
-                        "url": tool["url"] if tool["url"] != "#" else url_for("users.login", _external=True)
-                    })
         elif user_role == 'trader':
-            # Authenticated-trader: Only trader tools
             for tool in TRADER_TOOLS:
                 features.append({
                     "category": "Business",
@@ -265,23 +250,10 @@ def get_explore_features():
                     "description": tool.get("description", "Description not available"),
                     "url": tool["url"]
                 })
-        elif user_role == 'startup':
-            # Authenticated-startup: Only startup tools
-            for tool in STARTUP_TOOLS:
-                features.append({
-                    "category": "Startup",
-                    "label_key": tool["label_key"],
-                    "description_key": tool["description_key"],
-                    "label": tool["label"],
-                    "description": tool.get("description", "Description not available"),
-                    "url": tool["url"]
-                })
         elif user_role == 'admin':
-            # Authenticated-admin: All tools (admin + startup)
-            for tool in ADMIN_TOOLS + STARTUP_TOOLS:
-                category = "Admin" if tool in ADMIN_TOOLS else "Startup"
+            for tool in ADMIN_TOOLS:
                 features.append({
-                    "category": category,
+                    "category": "Admin",
                     "label_key": tool["label_key"],
                     "description_key": tool["description_key"],
                     "label": tool["label"],
@@ -310,7 +282,7 @@ def log_tool_usage(action, tool_name=None, details=None, user_id=None, db=None, 
             'user_id': str(user_id) if user_id else None,
             'session_id': effective_session_id,
             'action': details.get('action') if details else None,
-            'timestamp': datetime.now(timezone.utc),
+            'timestamp': datetime.now(ZoneInfo("UTC")),
             'ip_address': request.remote_addr if has_request_context() else 'unknown',
             'user_agent': request.headers.get('User-Agent') if has_request_context() else 'unknown'
         }
@@ -325,7 +297,7 @@ def create_anonymous_session():
         with current_app.app_context():
             session['sid'] = str(uuid.uuid4())
             session['is_anonymous'] = True
-            session['created_at'] = datetime.now(timezone.utc).isoformat()
+            session['created_at'] = datetime.now(ZoneInfo("UTC")).isoformat()
             if 'lang' not in session:
                 session['lang'] = 'en'
             session.modified = True
@@ -384,10 +356,12 @@ def get_mongo_db():
                     tls=True,
                     tlsCAFile=certifi.where(),
                     maxPoolSize=50,
-                    minPoolSize=5
+                    minPoolSize=5,
+                    connect=False  # Defer connection for fork-safety
                 )
-                client.admin.command('ping')
+                client.admin.command('ping')  # Force connection here
                 current_app.extensions['mongo'] = client
+                logger.info("MongoClient initialized for worker", extra={'session_id': 'no-session-id'})
             db = current_app.extensions['mongo']['bizdb']
             db.command('ping')
             return db
@@ -426,15 +400,6 @@ def is_admin():
         return False
 
 def can_user_interact(user):
-    """
-    Determines if a user can interact with features based on their subscription or trial status.
-    
-    Args:
-        user: The current user object (e.g., flask_login.current_user).
-        
-    Returns:
-        bool: True if the user can interact (active subscription or trial), False otherwise.
-    """
     try:
         with current_app.app_context():
             if not user or not user.is_authenticated:
@@ -443,8 +408,6 @@ def can_user_interact(user):
             if user.role == 'admin':
                 logger.info(f"User {user.id} allowed to interact: Admin role", extra={'session_id': session.get('sid', 'no-session-id'), 'user_id': user.id})
                 return True
-            
-            # Check subscription first
             if user.get('is_subscribed', False):
                 subscription_end = user.get('subscription_end')
                 if subscription_end:
@@ -453,16 +416,13 @@ def can_user_interact(user):
                         if subscription_end.tzinfo is None
                         else subscription_end
                     )
-                    if subscription_end_aware > datetime.now(timezone.utc):
+                    if subscription_end_aware > datetime.now(ZoneInfo("UTC")):
                         logger.info(f"User {user.id} allowed to interact: Active subscription", extra={'session_id': session.get('sid', 'no-session-id'), 'user_id': user.id})
                         return True
                     logger.info(f"User {user.id} subscription expired: {subscription_end_aware}", extra={'session_id': session.get('sid', 'no-session-id'), 'user_id': user.id})
                 else:
-                    # If subscribed but no end date, assume active (for admin-set subscriptions)
                     logger.info(f"User {user.id} allowed to interact: Active subscription (no end date)", extra={'session_id': session.get('sid', 'no-session-id'), 'user_id': user.id})
                     return True
-            
-            # Check trial if no active subscription
             if user.get('is_trial', False):
                 trial_end = user.get('trial_end')
                 if trial_end:
@@ -471,11 +431,10 @@ def can_user_interact(user):
                         if trial_end.tzinfo is None
                         else trial_end
                     )
-                    if trial_end_aware > datetime.now(timezone.utc):
+                    if trial_end_aware > datetime.now(ZoneInfo("UTC")):
                         logger.info(f"User {user.id} allowed to interact: Active trial", extra={'session_id': session.get('sid', 'no-session-id'), 'user_id': user.id})
                         return True
                     logger.info(f"User {user.id} trial expired: {trial_end_aware}", extra={'session_id': session.get('sid', 'no-session-id'), 'user_id': user.id})
-            
             logger.info(f"User {user.id} interaction denied: No active subscription or trial", extra={'session_id': session.get('sid', 'no-session-id'), 'user_id': user.id})
             return False
     except Exception as e:
@@ -483,23 +442,12 @@ def can_user_interact(user):
         return False
 
 def should_show_subscription_banner(user):
-    """
-    Determines if the subscription warning banner should be shown.
-    
-    Args:
-        user: The current user object (e.g., flask_login.current_user).
-        
-    Returns:
-        bool: True if banner should be shown, False otherwise.
-    """
     try:
         with current_app.app_context():
             if not user or not user.is_authenticated:
                 return False
             if user.role == 'admin':
                 return False
-            
-            # Don't show banner if user has active subscription
             if user.get('is_subscribed', False):
                 subscription_end = user.get('subscription_end')
                 if subscription_end:
@@ -508,13 +456,10 @@ def should_show_subscription_banner(user):
                         if subscription_end.tzinfo is None
                         else subscription_end
                     )
-                    if subscription_end_aware > datetime.now(timezone.utc):
+                    if subscription_end_aware > datetime.now(ZoneInfo("UTC")):
                         return False
                 else:
-                    # If subscribed but no end date, assume active
                     return False
-            
-            # Don't show banner if user has active trial
             if user.get('is_trial', False):
                 trial_end = user.get('trial_end')
                 if trial_end:
@@ -523,10 +468,8 @@ def should_show_subscription_banner(user):
                         if trial_end.tzinfo is None
                         else trial_end
                     )
-                    if trial_end_aware > datetime.now(timezone.utc):
+                    if trial_end_aware > datetime.now(ZoneInfo("UTC")):
                         return False
-            
-            # Show banner if no active subscription or trial
             return True
     except Exception as e:
         logger.error(f"Error checking subscription banner for user {user.get('id', 'unknown')}: {str(e)}", extra={'session_id': session.get('sid', 'no-session-id')})
@@ -568,7 +511,6 @@ def format_date(date_obj, lang=None, format_type='short'):
                     except ValueError:
                         logger.warning(f"Invalid date format for input: {date_obj}", extra={'session_id': session.get('sid', 'no-session-id')})
                         return date_obj
-            # Ensure datetime is timezone-aware
             date_obj_aware = date_obj.replace(tzinfo=ZoneInfo("UTC")) if date_obj.tzinfo is None else date_obj
             if format_type == 'iso':
                 return date_obj_aware.strftime('%Y-%m-%d')
@@ -616,7 +558,7 @@ def log_user_action(action, details=None, user_id=None):
                 'session_id': session_id,
                 'action': action,
                 'details': details or {},
-                'timestamp': datetime.now(timezone.utc),
+                'timestamp': datetime.now(ZoneInfo("UTC")),
                 'ip_address': request.remote_addr if has_request_context() else None,
                 'user_agent': request.headers.get('User-Agent') if has_request_context() else None
             }
@@ -628,27 +570,14 @@ def log_user_action(action, details=None, user_id=None):
         raise
 
 def track_user_activity(activity_type, description, amount=None, related_id=None, user_id=None):
-    """
-    Track user activity for the recent activity sidebar.
-    
-    Args:
-        activity_type: Type of activity (e.g., 'debtor_added', 'payment_made', etc.)
-        description: Human-readable description of the activity
-        amount: Optional amount associated with the activity
-        related_id: Optional ID of the related record
-        user_id: Optional user ID (defaults to current_user.id)
-    """
     try:
         with current_app.app_context():
             if user_id is None and current_user.is_authenticated:
                 user_id = current_user.id
-            
             if not user_id:
                 logger.warning("Cannot track activity: no user ID provided")
                 return
-            
             session_id = session.get('sid', 'no-session-id') if has_request_context() else 'no-session-id'
-            
             activity_entry = {
                 'user_id': user_id,
                 'session_id': session_id,
@@ -656,29 +585,22 @@ def track_user_activity(activity_type, description, amount=None, related_id=None
                 'description': description,
                 'amount': amount,
                 'related_id': related_id,
-                'timestamp': datetime.now(timezone.utc),
+                'timestamp': datetime.now(ZoneInfo("UTC")),
                 'ip_address': request.remote_addr if has_request_context() else None
             }
-            
             db = get_mongo_db()
-            
-            # Store in a dedicated user_activities collection for the sidebar
             db.user_activities.insert_one(activity_entry)
-            
-            # Also log as a regular audit log
             log_user_action(f"activity_{activity_type}", {
                 'description': description,
                 'amount': amount,
                 'related_id': related_id
             }, user_id)
-            
             logger.info(f"User activity tracked: {activity_type} for user {user_id}", 
                        extra={'session_id': session_id, 'user_id': user_id})
-            
     except Exception as e:
         logger.error(f"Error tracking user activity: {str(e)}", 
                     extra={'session_id': session.get('sid', 'no-session-id') if has_request_context() else 'no-session-id'})
-        # Don't raise the exception to avoid breaking the main functionality
+        # Don't raise to avoid breaking main functionality
 
 __all__ = [
     'clean_currency', 'log_tool_usage', 'get_limiter', 'create_anonymous_session', 
@@ -686,6 +608,5 @@ __all__ = [
     'should_show_subscription_banner', 'format_currency', 'format_date', 'sanitize_input', 
     'generate_unique_id', 'validate_required_fields', 'get_user_language', 'log_user_action', 
     'track_user_activity', 'initialize_tools_with_urls', 'TRADER_TOOLS', 'TRADER_NAV', 
-    'STARTUP_TOOLS', 'STARTUP_NAV', 'ADMIN_TOOLS', 'ADMIN_NAV', 'ALL_TOOLS', 
-    'get_explore_features'
+    'ADMIN_TOOLS', 'ADMIN_NAV', 'ALL_TOOLS', 'get_explore_features'
 ]
