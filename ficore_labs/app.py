@@ -21,7 +21,7 @@ from flask_babel import Babel
 from flask_compress import Compress
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from users.routes import get_post_login_redirect
+from blueprints.users.routes import get_post_login_redirect
 from utils import (
     get_mongo_db, logger, initialize_tools_with_urls, generate_tools_with_urls,
     TRADER_TOOLS, TRADER_NAV, format_date
