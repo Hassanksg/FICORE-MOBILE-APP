@@ -185,7 +185,6 @@ def migrate_naive_datetimes():
     except Exception as e:
         logger.error(f"Failed to migrate naive datetimes: {str(e)}", exc_info=True, extra={'session_id': 'no-session-id'})
         raise
-
 def initialize_app_data(app):
     """
     Initialize MongoDB collections, indexes, and perform one-off migrations for business finance modules.
@@ -231,6 +230,8 @@ def initialize_app_data(app):
                     'setup_complete': True,
                     'language': 'en',
                     'is_trial': False,
+                    'trial_start': None,  
+                    'trial_end': None,    
                     'is_subscribed': True,
                     'subscription_plan': 'admin',
                     'subscription_start': datetime.now(timezone.utc),
@@ -253,7 +254,7 @@ def initialize_app_data(app):
                 except Exception as e:
                     logger.error(f"Failed to create/update default admin user: {str(e)}", exc_info=True, extra={'session_id': 'no-session-id'})
                     raise
-            
+                    
             # Define collection schemas for core business finance modules
             collection_schemas = {
                 'users': {
