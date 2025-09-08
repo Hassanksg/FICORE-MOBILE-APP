@@ -113,13 +113,10 @@ TRADER_TOOLS = [
 
 TRADER_NAV = [
     {
-        __all__ = [
-            'clean_currency', 'log_tool_usage', 'get_limiter', 'create_anonymous_session', 
-            'is_valid_email', 'get_mongo_db', 'requires_role', 'is_admin', 'can_user_interact',
-            'should_show_subscription_banner', 'format_currency', 'format_date', 'sanitize_input', 'generate_unique_id', 
-            'validate_required_fields', 'get_user_language', 'log_user_action', 'track_user_activity',
-            'initialize_tools_with_urls', 'TRADER_TOOLS', 'TRADER_NAV', 'get_explore_features'
-        ]
+        "endpoint": "reports.index",
+        "label": "Profit Summary",
+        "label_key": "profit_summary",
+        "description_key": "profit_summary_desc",
         "tooltip_key": "profit_summary_tooltip",
         "icon": "bi-graph-up-arrow"
     },
@@ -135,12 +132,12 @@ TRADER_NAV = [
 
 _ADMIN_TOOLS = [
     {
-    "endpoint": "dashboard.index",
-    "label": "Dashboard",
-    "label_key": "dashboard_summary",
-    "description_key": "dashboard_summary_desc",
-    "tooltip_key": "dashboard_tooltip",
-    "icon": "bi-bar-chart-line"
+        "endpoint": "dashboard.index",
+        "label": "Dashboard",
+        "label_key": "dashboard_summary",
+        "description_key": "dashboard_summary_desc",
+        "tooltip_key": "dashboard_tooltip",
+        "icon": "bi-bar-chart-line"
     },
     {
         "endpoint": "admin.dashboard",
@@ -686,9 +683,9 @@ def track_user_activity(activity_type, description, amount=None, related_id=None
 __all__ = [
     'clean_currency', 'log_tool_usage', 'get_limiter', 'create_anonymous_session', 
     'is_valid_email', 'get_mongo_db', 'requires_role', 'is_admin', 'can_user_interact',
-    'should_show_subscription_banner', 'format_currency', 'format_date', 'sanitize_input', 'generate_unique_id', 
-    'validate_required_fields', 'get_user_language', 'log_user_action', 'track_user_activity',
-    'initialize_tools_with_urls', 'TRADER_TOOLS', 
-    'TRADER_NAV', 'STARTUP_TOOLS', 'STARTUP_NAV', 'ADMIN_TOOLS', 'ADMIN_NAV', 
-    'ALL_TOOLS', 'get_explore_features'
+    'should_show_subscription_banner', 'format_currency', 'format_date', 'sanitize_input', 
+    'generate_unique_id', 'validate_required_fields', 'get_user_language', 'log_user_action', 
+    'track_user_activity', 'initialize_tools_with_urls', 'TRADER_TOOLS', 'TRADER_NAV', 
+    'STARTUP_TOOLS', 'STARTUP_NAV', 'ADMIN_TOOLS', 'ADMIN_NAV', 'ALL_TOOLS', 
+    'get_explore_features'
 ]
