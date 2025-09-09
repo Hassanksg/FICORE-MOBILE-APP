@@ -7,6 +7,10 @@ GENERAL_TRANSLATIONS = {
         'general_remember_me': 'Remember Me',
         'general_startup': 'Startup',
         'general_net_cashflow_mtd':'Net Cashflow (MTD)',
+        'dashboard_summary_desc': 'View a summary of your business performance and key metrics.',
+        'dashboard_tooltip': 'Access an overview of your business activities.',
+        'inventory_dashboard_desc': 'Manage your stock and inventory levels.',
+        'inventory_tooltip': 'Track and update your inventory details.',
         'general_receipts_mtd':'Sales Income (MTD)',
         'general_payments_mtd':'Expenses (MTD)',
         'general_technology': 'Technology',
@@ -1263,6 +1267,10 @@ GENERAL_TRANSLATIONS = {
         'general_payments_mtd':'Kudaden Fita (MTD)',
 
         # Financial Tools
+        'dashboard_summary_desc': 'Duba taƙaitaccen bayani game da ayyukan kasuwancinka da maƙasudai masu mahimmanci.',
+        'dashboard_tooltip': 'Samun damar kallon ayyukan kasuwancinka gabaɗaya.',
+        'inventory_dashboard_desc': 'Sarrafa kayan ajiya da matakan kaya.',
+        'inventory_tooltip': 'Bincika da sabunta bayanan kayanka.',
         'profile': 'Bayani',
         'debtors': 'Masu Bashi',
         'creditors': 'Masu Biyan Bashi',
