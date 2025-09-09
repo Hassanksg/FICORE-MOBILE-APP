@@ -89,44 +89,7 @@ def get_breadcrumb_items():
                 {'label': 'Dashboard', 'label_key': 'general_dashboard', 'icon': 'bi-speedometer2'}
             ],
             
-            # Funds module (for startup users)
-            'funds.index': [
-                {'label': 'Funds', 'label_key': 'funds_dashboard', 'icon': 'bi-piggy-bank'}
-            ],
-            'funds.add': [
-                {'label': 'Funds', 'label_key': 'funds_dashboard', 'url': url_for('funds.index'), 'icon': 'bi-piggy-bank'},
-                {'label': 'Add Fund', 'label_key': 'funds_add_fund', 'icon': 'bi-plus-circle'}
-            ],
-            'funds.edit': [
-                {'label': 'Funds', 'label_key': 'funds_dashboard', 'url': url_for('funds.index'), 'icon': 'bi-piggy-bank'},
-                {'label': 'Edit Fund', 'label_key': 'funds_edit_fund', 'icon': 'bi-pencil-square'}
-            ],
-            
-            # Forecasts module (for startup users)
-            'forecasts.index': [
-                {'label': 'Forecasts', 'label_key': 'forecasts_dashboard', 'icon': 'bi-graph-up'}
-            ],
-            'forecasts.add': [
-                {'label': 'Forecasts', 'label_key': 'forecasts_dashboard', 'url': url_for('forecasts.index'), 'icon': 'bi-graph-up'},
-                {'label': 'Add Forecast', 'label_key': 'forecasts_add_forecast', 'icon': 'bi-plus-circle'}
-            ],
-            'forecasts.edit': [
-                {'label': 'Forecasts', 'label_key': 'forecasts_dashboard', 'url': url_for('forecasts.index'), 'icon': 'bi-graph-up'},
-                {'label': 'Edit Forecast', 'label_key': 'forecasts_edit_forecast', 'icon': 'bi-pencil-square'}
-            ],
-            
-            # Investor Reports module (for startup users)
-            'investor_reports.index': [
-                {'label': 'Investor Reports', 'label_key': 'investor_reports_dashboard', 'icon': 'bi-file-earmark-bar-graph'}
-            ],
-            'investor_reports.add': [
-                {'label': 'Investor Reports', 'label_key': 'investor_reports_dashboard', 'url': url_for('investor_reports.index'), 'icon': 'bi-file-earmark-bar-graph'},
-                {'label': 'Add Report', 'label_key': 'investor_reports_add_report', 'icon': 'bi-plus-circle'}
-            ],
-            'investor_reports.edit': [
-                {'label': 'Investor Reports', 'label_key': 'investor_reports_dashboard', 'url': url_for('investor_reports.index'), 'icon': 'bi-file-earmark-bar-graph'},
-                {'label': 'Edit Report', 'label_key': 'investor_reports_edit_report', 'icon': 'bi-pencil-square'}
-            ],
+           
             
             # KYC module
             'kyc.index': [
@@ -228,4 +191,5 @@ def get_page_title():
         return 'FiCore Africa'
     except Exception as e:
         logger.error(f"Error generating page title: {str(e)}")
+
         return 'FiCore Africa'
