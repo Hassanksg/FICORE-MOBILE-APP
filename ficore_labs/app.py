@@ -277,10 +277,6 @@ def create_app():
     app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'Uploads')
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-    # Add URL generation configurations
-    app.config['APPLICATION_ROOT'] = os.getenv('APPLICATION_ROOT', '/')
-    app.config['PREFERRED_URL_SCHEME'] = os.getenv('PREFERRED_URL_SCHEME', 'https')
-
     # Initialize MongoDB
     try:
         client = MongoClient(
