@@ -669,6 +669,10 @@ def create_app():
     return app
 
 app = create_app()
+app.config['SERVER_NAME'] = 'localhost:5000'
+app.config['APPLICATION_ROOT'] = '/'
+app.config['PREFERRED_URL_SCHEME'] = 'https'
+app.secret_key = 'your_secret_key'  # Change this to a random secret key
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
