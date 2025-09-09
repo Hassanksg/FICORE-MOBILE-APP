@@ -123,6 +123,22 @@ TRADER_TOOLS = [
 ]
 
 TRADER_NAV = [
+        {
+        "endpoint": "receipts.index",
+        "label": "Receipts",
+        "label_key": "receipts_dashboard",
+        "description_key": "receipts_dashboard_desc",
+        "tooltip_key": "receipts_tooltip",
+        "icon": "bi-cash-coin"
+    },
+    {
+        "endpoint": "debtors.index",
+        "label": "Debtors",
+        "label_key": "debtors_dashboard",
+        "description_key": "debtors_dashboard_desc",
+        "tooltip_key": "debtors_tooltip",
+        "icon": "bi-person-plus"
+    },
     {
         "endpoint": "reports.index",
         "label": "Profit Summary",
