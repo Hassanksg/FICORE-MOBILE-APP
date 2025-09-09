@@ -27,20 +27,28 @@ def index():
 @login_required
 def add():
     form = InventoryForm()
-    can_interact = utils.can_interact(current_user)  # Assume this checks subscription status
+    try:
+        can_interact = utils.can_user_interact(current_user)  # Updated to use can_user_interact
+    except AttributeError:
+        flash(trans('server_error', default='Server configuration error. Please contact support.'), 'error')
+        return render_template('inventory/add.html', form=form, can_interact=False)
+    
     if form.validate_on_submit() and can_interact:
-        db = utils.get_mongo_db()
-        user_id = str(current_user.id)
-        db.records.insert_one({
-            'user_id': user_id,
-            'type': 'inventory',
-            'name': form.name.data,
-            'cost': form.cost.data,
-            'expected_margin': form.expected_margin.data,
-            'created_at': datetime.now(timezone.utc)
-        })
-        flash(trans('inventory_added', default='Inventory item added!'), 'success')
-        return redirect(url_for('inventory.index'))
-    Oto
-
+        try:
+            db = utils.get_mongo_db()
+            user_id = str(current_user.id)
+            db.records.insert_one({
+                'user_id': user_id,
+                'type': 'inventory',
+                'name': form.name.data,
+                'cost': form.cost.data,
+                'expected_margin': form.expected_margin.data,
+                'created_at': datetime.now(timezone.utc)
+            })
+            flash(trans('inventory_added', default='Inventory item added!'), 'success')
+            return redirect(url_for('inventory.index'))
+        except Exception as e:
+            flash(trans('db_error', default=f'Error adding item: {str(e)}'), 'error')
+            return render_template('inventory/add.html', form=form, can_interact=can_interact)
+    
     return render_template('inventory/add.html', form=form, can_interact=can_interact)
