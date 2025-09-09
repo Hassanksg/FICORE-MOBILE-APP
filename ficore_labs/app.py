@@ -273,6 +273,11 @@ def create_app():
         logger.error('MONGO_URI environment variable is not set', extra={'session_id': 'none', 'user_role': 'none', 'ip_address': 'none'})
         raise ValueError('MONGO_URI must be set')
 
+    # Add server name configuration for URL building
+    app.config['SERVER_NAME'] = os.getenv('SERVER_NAME')
+    app.config['APPLICATION_ROOT'] = os.getenv('APPLICATION_ROOT', '/')
+    app.config['PREFERRED_URL_SCHEME'] = os.getenv('PREFERRED_URL_SCHEME', 'http')
+
     # Configure upload folder for KYC
     app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'Uploads')
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -396,7 +401,8 @@ def create_app():
 
     # Initialize tools and navigation
     try:
-        initialize_tools_with_urls(app)
+        with app.app_context():
+            initialize_tools_with_urls(app)
         logger.info('Navigation initialized after blueprint registration', extra={'session_id': 'none', 'user_role': 'none', 'ip_address': 'none'})
     except Exception as e:
         logger.error(f'Failed to initialize navigation: {str(e)}', extra={'session_id': 'none', 'user_role': 'none', 'ip_address': 'none'})
@@ -669,10 +675,6 @@ def create_app():
     return app
 
 app = create_app()
-
-app.config['APPLICATION_ROOT'] = os.getenv('APPLICATION_ROOT', '/')
-app.config['PREFERRED_URL_SCHEME'] = os.getenv('PREFERRED_URL_SCHEME', 'https')
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
