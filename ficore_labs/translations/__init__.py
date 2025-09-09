@@ -35,11 +35,7 @@ try:
     from .trader.creditors_translations import CREDITORS_TRANSLATIONS
     from .trader.debtors_translations import DEBTORS_TRANSLATIONS
     from .trader.payments_translations import PAYMENTS_TRANSLATIONS
-    from .trader.receipts_translations import RECEIPTS_TRANSLATIONS
-    from .startup.funds_translations import FUNDS_TRANSLATIONS
-    from .startup.investor_reports_translations import INVESTOR_REPORTS_TRANSLATIONS
-    from .startup.forecasts_translations import FORECASTS_TRANSLATIONS
-    
+    from .trader.receipts_translations import RECEIPTS_TRANSLATIONS    
     # General Features
     from .general_features.general_translations import GENERAL_TRANSLATIONS
     from .general_features.admin_translations import ADMIN_TRANSLATIONS
@@ -55,9 +51,6 @@ translation_modules = {
     'debtors': DEBTORS_TRANSLATIONS,
     'payments': PAYMENTS_TRANSLATIONS,
     'receipts': RECEIPTS_TRANSLATIONS,
-    'funds': FUNDS_TRANSLATIONS,
-    'investor_reports': INVESTOR_REPORTS_TRANSLATIONS,
-    'forecasts': FORECASTS_TRANSLATIONS,
     'admin': ADMIN_TRANSLATIONS,
     
     # General Features
@@ -71,9 +64,6 @@ KEY_PREFIX_TO_MODULE = {
     'debtors_': 'debtors',
     'payments_': 'payments',
     'receipts_': 'receipts',
-    'funds_': 'funds',
-    'investor_reports_': 'investor_reports',
-    'forecasts_': 'forecasts',
     'admin_': 'admin',
     
     # General Features prefixes
