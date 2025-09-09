@@ -43,14 +43,47 @@ if (!userSidebarEnabled) {
         </div>
         
         <div class="sidebar-footer">
-            <a href="{{ url_for('receipts.add') }}" class="btn btn-sm btn-success w-100 mb-2">
-                <i class="bi bi-plus-circle me-1"></i>
-                {{ t('quick_add_sale', default='Add Sale') | e }}
-            </a>
-            <a href="{{ url_for('payments.add') }}" class="btn btn-sm btn-danger w-100 mb-2">
-                <i class="bi bi-dash-circle me-1"></i>
-                {{ t('quick_add_expense', default='Add Expense') | e }}
-            </a>
+            <!-- Primary Actions -->
+            <div class="d-flex gap-2 mb-2">
+                <a href="{{ url_for('receipts.add') }}" class="btn btn-sm btn-success w-100">
+                    <i class="bi bi-plus-circle me-1"></i>
+                    {{ t('quick_add_sale', default='Add Sale') | e }}
+                </a>
+                <a href="{{ url_for('payments.add') }}" class="btn btn-sm btn-danger w-100">
+                    <i class="bi bi-dash-circle me-1"></i>
+                    {{ t('quick_add_expense', default='Add Expense') | e }}
+                </a>
+            </div>
+
+            <!-- Secondary Actions Dropdown -->
+            <div class="dropdown mb-2">
+                <button class="btn btn-sm btn-outline-secondary dropdown-toggle w-100" type="button" id="moreActionsDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="bi bi-three-dots me-1"></i>
+                    {{ t('general_more_actions', default='More Actions') | e }}
+                </button>
+                <ul class="dropdown-menu w-100" aria-labelledby="moreActionsDropdown">
+                    <li>
+                        <a class="dropdown-item" href="{{ url_for('debtors.add') }}">
+                            <i class="bi bi-person-plus-fill me-2"></i>
+                            {{ t('quick_add_debtor', default='Add Debtor') | e }}
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item" href="{{ url_for('creditors.add') }}">
+                            <i class="bi bi-person-dash-fill me-2"></i>
+                            {{ t('quick_add_creditor', default='Add Creditor') | e }}
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item" href="{{ url_for('inventory.add') }}">
+                            <i class="bi bi-box-seam me-2"></i>
+                            {{ t('quick_add_inventory', default='Add Inventory') | e }}
+                        </a>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Tertiary Action -->
             <a href="{{ url_for('business.view_data') | e }}" class="btn btn-sm btn-outline-primary w-100">
                 <i class="bi bi-eye me-1"></i>
                 {{ t('general_view_all_activity', default='View All Activity') | e }}
@@ -733,5 +766,3 @@ function formatCurrency(amount) {
     return '₦' + value.toLocaleString('en-NG', {maximumFractionDigits: 0});
 }
 </script>
-
-
