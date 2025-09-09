@@ -1031,7 +1031,7 @@ GENERAL_TRANSLATIONS = {
         'general_user_profile_picture': 'Hoton bayanan mai amfani',
         'general_logout_tooltip': 'Fita',
         'general_profile_alt': 'Takaicen bayanin martaba',
-        'general_snapshots': 'Takaicen gaggawa',
+        'general_snapshots': 'Takaice',
         'general_mobile_navigation': 'Kewayawa ta wayar hannu',
         'general_user_fetch_error': 'Kuskuren samun bayanan mai amfani',
         'general_payment_method_required': 'Ana buƙatar hanyar biya',
