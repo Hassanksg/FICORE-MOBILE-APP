@@ -1,10 +1,19 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_required, current_user
+from flask_wtf import FlaskForm
+from wtforms import StringField, FloatField, SubmitField
+from wtforms.validators import DataRequired, NumberRange
 from translations import trans
 import utils
 from datetime import datetime, timezone
 
 inventory_bp = Blueprint('inventory', __name__, url_prefix='/inventory')
+
+class InventoryForm(FlaskForm):
+    name = StringField('Name', validators=[DataRequired()])
+    cost = FloatField('Cost', validators=[DataRequired(), NumberRange(min=0)])
+    expected_margin = FloatField('Expected Margin', validators=[DataRequired(), NumberRange(min=0)])
+    submit = SubmitField('Add Item')
 
 @inventory_bp.route('/')
 @login_required
@@ -17,20 +26,21 @@ def index():
 @inventory_bp.route('/add', methods=['GET', 'POST'])
 @login_required
 def add():
-    if request.method == 'POST':
+    form = InventoryForm()
+    can_interact = utils.can_interact(current_user)  # Assume this checks subscription status
+    if form.validate_on_submit() and can_interact:
         db = utils.get_mongo_db()
         user_id = str(current_user.id)
-        name = request.form.get('name')
-        cost = float(request.form.get('cost', 0))
-        expected_margin = float(request.form.get('expected_margin', 0))
         db.records.insert_one({
             'user_id': user_id,
             'type': 'inventory',
-            'name': name,
-            'cost': cost,
-            'expected_margin': expected_margin,
+            'name': form.name.data,
+            'cost': form.cost.data,
+            'expected_margin': form.expected_margin.data,
             'created_at': datetime.now(timezone.utc)
         })
         flash(trans('inventory_added', default='Inventory item added!'), 'success')
         return redirect(url_for('inventory.index'))
-    return render_template('inventory/add.html')
+    Oto
+
+    return render_template('inventory/add.html', form=form, can_interact=can_interact)
