@@ -55,32 +55,20 @@ if (!userSidebarEnabled) {
                 </a>
             </div>
 
-            <!-- Secondary Actions Dropdown -->
-            <div class="dropdown mb-2">
-                <button class="btn btn-sm btn-outline-secondary dropdown-toggle w-100" type="button" id="moreActionsDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                    <i class="bi bi-three-dots me-1"></i>
-                    {{ t('general_more_actions', default='More Actions') | e }}
-                </button>
-                <ul class="dropdown-menu w-100" aria-labelledby="moreActionsDropdown">
-                    <li>
-                        <a class="dropdown-item" href="{{ url_for('debtors.add') }}">
-                            <i class="bi bi-person-plus-fill me-2"></i>
-                            {{ t('quick_add_debtor', default='Add Debtor') | e }}
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="{{ url_for('creditors.add') }}">
-                            <i class="bi bi-person-dash-fill me-2"></i>
-                            {{ t('quick_add_creditor', default='Add Creditor') | e }}
-                        </a>
-                    </li>
-                    <li>
-                        <a class="dropdown-item" href="{{ url_for('inventory.add') }}">
-                            <i class="bi bi-box-seam me-2"></i>
-                            {{ t('quick_add_inventory', default='Add Inventory') | e }}
-                        </a>
-                    </li>
-                </ul>
+            <!-- Secondary Actions -->
+            <div class="d-flex flex-column gap-2 mb-2">
+                <a href="{{ url_for('debtors.add') }}" class="btn btn-sm btn-outline-success w-100 smaller-btn">
+                    <i class="bi bi-person-plus-fill me-1"></i>
+                    {{ t('quick_add_debtor', default='Add Debtor') | e }}
+                </a>
+                <a href="{{ url_for('creditors.add') }}" class="btn btn-sm btn-outline-danger w-100 smaller-btn">
+                    <i class="bi bi-person-dash-fill me-1"></i>
+                    {{ t('quick_add_creditor', default='Add Creditor') | e }}
+                </a>
+                <a href="{{ url_for('inventory.add') }}" class="btn btn-sm btn-outline-info w-100 smaller-btn">
+                    <i class="bi bi-box-seam me-1"></i>
+                    {{ t('quick_add_inventory', default='Add Inventory') | e }}
+                </a>
             </div>
 
             <!-- Tertiary Action -->
@@ -214,7 +202,7 @@ if (!userSidebarEnabled) {
     font-size: 0.9rem;
 }
 
-.sidebar-toggle {
+.sidebar-toggle图形 {
     padding: 0.25rem 0.5rem;
     border-radius: 6px;
     transition: all 0.2s ease;
@@ -311,6 +299,16 @@ if (!userSidebarEnabled) {
     background: rgba(248, 249, 250, 0.8);
 }
 
+/* Smaller buttons for secondary actions */
+.smaller-btn {
+    font-size: 0.75rem;
+    padding: 0.35rem 0.5rem;
+}
+
+.smaller-btn i {
+    font-size: 0.8rem;
+}
+
 /* Activity type specific colors */
 .activity-icon.debtor { background: rgba(40, 167, 69, 0.1); }
 .activity-icon.creditor { background: rgba(220, 53, 69, 0.1); }
@@ -380,6 +378,36 @@ if (!userSidebarEnabled) {
     border-color: rgba(255, 255, 255, 0.1);
 }
 
+.dark-mode .btn-outline-success {
+    color: #28a745;
+    border-color: #28a745;
+}
+
+.dark-mode .btn-outline-success:hover {
+    background-color: rgba(40, 167, 69, 0.1);
+    color: #28a745;
+}
+
+.dark-mode .btn-outline-danger {
+    color: #dc3545;
+    border-color: #dc3545;
+}
+
+.dark-mode .btn-outline-danger:hover {
+    background-color: rgba(220, 53, 69, 0.1);
+    color: #dc3545;
+}
+
+.dark-mode .btn-outline-info {
+    color: #17a2b8;
+    border-color: #17a2b8;
+}
+
+.dark-mode .btn-outline-info:hover {
+    background-color: rgba(23, 162, 184, 0.1);
+    color: #17a2b8;
+}
+
 /* Mobile responsive */
 @media (max-width: 768px) {
     .sidebar-persistent-toggle {
@@ -429,6 +457,15 @@ if (!userSidebarEnabled) {
     
     .activity-time {
         font-size: 0.7rem;
+    }
+
+    .smaller-btn {
+        font-size: 0.7rem;
+        padding: 0.3rem 0.4rem;
+    }
+
+    .smaller-btn i {
+        font-size: 0.75rem;
     }
 }
 
