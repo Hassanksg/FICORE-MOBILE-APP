@@ -71,6 +71,14 @@ TRADER_TOOLS = [
         "description_key": "dashboard_summary_desc",
         "tooltip_key": "dashboard_tooltip",
         "icon": "bi-bar-chart-line"
+    },  
+    {
+        "endpoint": "receipts.index",
+        "label": "Receipts",
+        "label_key": "receipts_dashboard",
+        "description_key": "receipts_dashboard_desc",
+        "tooltip_key": "receipts_tooltip",
+        "icon": "bi-cash-coin"
     },
     {
         "endpoint": "debtors.index",
@@ -95,14 +103,6 @@ TRADER_TOOLS = [
         "description_key": "inventory_dashboard_desc",
         "tooltip_key": "inventory_tooltip",
         "icon": "bi-box-seam"
-    },
-    {
-        "endpoint": "receipts.index",
-        "label": "Receipts",
-        "label_key": "receipts_dashboard",
-        "description_key": "receipts_dashboard_desc",
-        "tooltip_key": "receipts_tooltip",
-        "icon": "bi-cash-coin"
     },
     {
         "endpoint": "payments.index",
